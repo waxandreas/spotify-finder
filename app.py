@@ -29,29 +29,38 @@ query_params = st.query_params
 # Falls kein "code" in der URL ist -> Login zeigen
 if "code" not in query_params:
     auth_url = auth_manager.get_authorize_url()
-    st.info("Willkommen! Bitte melde dich zuerst bei Spotify an.")
     
-    # Wir erstellen den Button. Wenn er geklickt wird, führt er das JS aus.
-    if st.button("Mit Spotify verbinden", type="primary"):
-        # Dieser Befehl reißt die Seite aus dem Iframe heraus
-        js = f"window.top.location.href = '{auth_url}'"
-        st.components.v1.html(f"<script>{js}</script>", height=0)
-        st.stop()
-
-    # Styling für den Button (Streamlit Buttons sind standardmäßig rot/blau, 
-    # wir machen ihn hier über CSS grün)
     st.markdown("""
         <style>
-        div.stButton > button:first-child {
+        .spotify-btn {
+            display: flex;
+            justify-content: center;
+            align-items: center;
             background-color: #1DB954;
-            color: white;
+            color: white !important;
+            padding: 15px 30px;
             border-radius: 50px;
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 18px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            transition: 0.3s;
             border: none;
-            padding: 10px 20px;
-            width: 100%;
+            width: fit-content;
+            margin: 20px auto;
+        }
+        .spotify-btn:hover {
+            background-color: #1ed760;
+            transform: scale(1.02);
+            box-shadow: 0 6px 15px rgba(0,0,0,0.3);
         }
         </style>
     """, unsafe_allow_html=True)
+
+    st.info("Willkommen! Bitte verbinde dich mit deinem Spotify-Konto.")
+    
+    # Wir nutzen target="_top", um den Iframe-Rahmen zu sprengen
+    st.markdown(f'<a href="{auth_url}" target="_top" class="spotify-btn">Mit Spotify verbinden</a>', unsafe_allow_html=True)
 else:
     # 3. Token abrufen und Spotify-Client starten
     try:
