@@ -2,11 +2,12 @@ import streamlit as st
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import requests
+import time
 
 st.set_page_config(page_title="Spotify Finder", layout="centered")
 st.title("🎵 Spotify Finder")
 
-# 1. Zugriff auf die Secrets (müssen in Streamlit Cloud hinterlegt sein)
+# 1. Zugriff auf die Secrets
 try:
     client_id = st.secrets["SPOTIPY_CLIENT_ID"]
     client_secret = st.secrets["SPOTIPY_CLIENT_SECRET"]
@@ -24,18 +25,15 @@ auth_manager = SpotifyOAuth(
     show_dialog=True
 )
 
-# NEU: Der moderne Weg, um URL-Parameter in Streamlit abzugreifen
 query_params = st.query_params
 
 # Falls kein "code" in der URL ist -> Login zeigen
 if "code" not in query_params:
     auth_url = auth_manager.get_authorize_url()
     st.info("Willkommen! Bitte melde dich zuerst bei Spotify an.")
-    
-    # Dieser Button öffnet den Link automatisch korrekt
     st.link_button("Mit Spotify verbinden", auth_url, type="primary")
 else:
-    # 1. Token manuell extrahieren
+    # 1. Token extrahieren
     if 'access_token' not in st.session_state:
         try:
             code = query_params["code"]
@@ -49,30 +47,31 @@ else:
     token = st.session_state.access_token
     headers = {"Authorization": f"Bearer {token}"}
 
-    # 2. Direkter Test-Aufruf ohne Spotipy
-    st.write("### Schritt 1: Verbindung testen")
+    # 2. Schritt 1: Katalog laden (mit Geduld-Logik)
+    st.write("### Schritt 1: Bibliothek erfassen")
     
     if 'all_playlists' not in st.session_state:
-        if st.button("Katalog mit Gewalt laden"):
+        if st.button("Katalog mit Geduld laden"):
             all_p = []
             url = "https://api.spotify.com/v1/me/playlists?limit=50"
             
-            with st.status("Sende direkten HTTP-Request an Spotify...") as status:
+            with st.status("Verbinde mit Spotify...", expanded=True) as status:
                 try:
                     while url:
-                        status.write(f"Kontaktiere: {url}")
                         response = requests.get(url, headers=headers, timeout=10)
                         
                         if response.status_code == 200:
                             data = response.json()
                             all_p.extend(data['items'])
                             url = data.get('next')
-                            status.write(f"Erfolg! {len(all_p)} Playlists bisher...")
+                            status.write(f"✅ {len(all_p)} Playlists gefunden...")
+                            time.sleep(0.3) # Kurze Pause zur Sicherheit
                         elif response.status_code == 429:
-                            st.error("Rate Limit! Spotify sagt: Du fragst zu schnell ab. Warte 30 Sek.")
-                            st.stop()
+                            wait_time = int(response.headers.get("Retry-After", 30))
+                            status.write(f"⏳ Rate Limit! Pause für {wait_time} Sek...")
+                            time.sleep(wait_time + 1)
                         else:
-                            st.error(f"Spotify Fehler {response.status_code}: {response.text}")
+                            st.error(f"Fehler {response.status_code}: {response.text}")
                             st.stop()
                     
                     st.session_state.all_playlists = all_p
@@ -80,52 +79,56 @@ else:
                     st.rerun()
                 except Exception as e:
                     st.error(f"Netzwerk-Fehler: {e}")
-                    st.info("Das deutet darauf hin, dass der Streamlit-Server Spotify nicht erreichen kann.")
         st.stop()
 
-    # (Ab hier bleibt der Code gleich wie zuvor für Schritt 3 & 4)
-    st.write(f"✅ {len(st.session_state.all_playlists)} Playlists gefunden.")
-    if st.button("🚀 Jetzt Songs scannen"):
-        all_songs = []
+    # 3. Schritt 2: Sichtbarer Scan
+    if 'all_songs' not in st.session_state:
+        st.write(f"✅ {len(st.session_state.all_playlists)} Playlists gefunden.")
         
-        # Hier ist die genaue Fortschrittsanzeige
-        progress_bar = st.progress(0)
-        playlist_name_display = st.empty() # Platzhalter für den Namen
-        counter_display = st.empty()      # Platzhalter für die Zahl
-        
-        total = len(st.session_state.all_playlists)
-        
-        for i, pl in enumerate(st.session_state.all_playlists):
-            # Update der Anzeige VOR dem Laden der Playlist
-            current_num = i + 1
-            playlist_name_display.markdown(f"Aktuelle Playlist: **{pl['name']}**")
-            counter_display.info(f"Fortschritt: {current_num} von {total}")
-            progress_bar.progress(current_num / total)
+        if st.button("🚀 Jetzt Songs scannen"):
+            all_songs = []
+            progress_bar = st.progress(0)
+            playlist_name_display = st.empty()
+            counter_display = st.empty()
             
-            try:
-                # Wir holen die Songs
-                res = sp.playlist_items(
-                    pl['id'], 
-                    limit=100, 
-                    fields='items(track(name, external_urls, artists(name)))'
-                )
-                for item in res['items']:
-                    t = item.get('track')
-                    if t:
-                        all_songs.append({
-                            "Song": t['name'], 
-                            "Artists": ", ".join([a['name'] for a in t['artists']]), 
-                            "Playlist": pl['name'],
-                            "Link": t['external_urls']['spotify']
-                        })
-            except Exception as e:
-                st.warning(f"Konnte '{pl['name']}' nicht lesen. Überspringe...")
-                continue
+            total = len(st.session_state.all_playlists)
             
-        st.session_state.all_songs = all_songs
-        st.success("✅ Scan abgeschlossen!")
-        st.rerun()
-    st.stop()
+            for i, pl in enumerate(st.session_state.all_playlists):
+                current_num = i + 1
+                playlist_name_display.markdown(f"Aktuelle Playlist: **{pl['name']}**")
+                counter_display.info(f"Fortschritt: {current_num} von {total}")
+                progress_bar.progress(current_num / total)
+                
+                # Request für Songs dieser Playlist
+                pl_url = f"https://api.spotify.com/v1/playlists/{pl['id']}/tracks?limit=100&fields=items(track(name,external_urls,artists(name))),next"
+                
+                while pl_url:
+                    res = requests.get(pl_url, headers=headers, timeout=10)
+                    
+                    if res.status_code == 200:
+                        data = res.json()
+                        for item in data.get('items', []):
+                            t = item.get('track')
+                            if t:
+                                all_songs.append({
+                                    "Song": t['name'], 
+                                    "Artists": ", ".join([a['name'] for a in t['artists']]), 
+                                    "Playlist": pl['name'],
+                                    "Link": t['external_urls']['spotify']
+                                })
+                        pl_url = data.get('next')
+                        time.sleep(0.1) # Minimale Pause zwischen Song-Paketen
+                    elif res.status_code == 429:
+                        wait = int(res.headers.get("Retry-After", 30))
+                        counter_display.warning(f"⏳ Rate Limit! Warte {wait}s...")
+                        time.sleep(wait + 1)
+                    else:
+                        pl_url = None # Fehler -> Diese Playlist abbrechen
+                
+            st.session_state.all_songs = all_songs
+            st.success(f"✅ Scan abgeschlossen! {len(all_songs)} Songs gefunden.")
+            st.rerun()
+        st.stop()
 
     # 4. Schritt: Die Suche
     st.write("### 🔍 Künstler suchen")
@@ -135,7 +138,9 @@ else:
         matches = [s for s in st.session_state.all_songs if artist_query in s['Artists'].lower()]
         if matches:
             st.write(f"Gefundene Songs: {len(matches)}")
-            st.dataframe(matches, use_container_width=True)
+            st.dataframe(matches, use_container_width=True, hide_index=True, column_config={
+                "Link": st.column_config.LinkColumn("In Spotify öffnen")
+            })
         else:
             st.warning("Kein Treffer in deiner Bibliothek.")
 
