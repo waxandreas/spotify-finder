@@ -86,46 +86,46 @@ else:
     # (Ab hier bleibt der Code gleich wie zuvor für Schritt 3 & 4)
     st.write(f"✅ {len(st.session_state.all_playlists)} Playlists gefunden.")
     if st.button("🚀 Jetzt Songs scannen"):
-            all_songs = []
+        all_songs = []
+        
+        # Hier ist die genaue Fortschrittsanzeige
+        progress_bar = st.progress(0)
+        playlist_name_display = st.empty() # Platzhalter für den Namen
+        counter_display = st.empty()      # Platzhalter für die Zahl
+        
+        total = len(st.session_state.all_playlists)
+        
+        for i, pl in enumerate(st.session_state.all_playlists):
+            # Update der Anzeige VOR dem Laden der Playlist
+            current_num = i + 1
+            playlist_name_display.markdown(f"Aktuelle Playlist: **{pl['name']}**")
+            counter_display.info(f"Fortschritt: {current_num} von {total}")
+            progress_bar.progress(current_num / total)
             
-            # Hier ist die genaue Fortschrittsanzeige
-            progress_bar = st.progress(0)
-            playlist_name_display = st.empty() # Platzhalter für den Namen
-            counter_display = st.empty()      # Platzhalter für die Zahl
+            try:
+                # Wir holen die Songs
+                res = sp.playlist_items(
+                    pl['id'], 
+                    limit=100, 
+                    fields='items(track(name, external_urls, artists(name)))'
+                )
+                for item in res['items']:
+                    t = item.get('track')
+                    if t:
+                        all_songs.append({
+                            "Song": t['name'], 
+                            "Artists": ", ".join([a['name'] for a in t['artists']]), 
+                            "Playlist": pl['name'],
+                            "Link": t['external_urls']['spotify']
+                        })
+            except Exception as e:
+                st.warning(f"Konnte '{pl['name']}' nicht lesen. Überspringe...")
+                continue
             
-            total = len(st.session_state.all_playlists)
-            
-            for i, pl in enumerate(st.session_state.all_playlists):
-                # Update der Anzeige VOR dem Laden der Playlist
-                current_num = i + 1
-                playlist_name_display.markdown(f"Aktuelle Playlist: **{pl['name']}**")
-                counter_display.info(f"Fortschritt: {current_num} von {total}")
-                progress_bar.progress(current_num / total)
-                
-                try:
-                    # Wir holen die Songs
-                    res = sp.playlist_items(
-                        pl['id'], 
-                        limit=100, 
-                        fields='items(track(name, external_urls, artists(name)))'
-                    )
-                    for item in res['items']:
-                        t = item.get('track')
-                        if t:
-                            all_songs.append({
-                                "Song": t['name'], 
-                                "Artists": ", ".join([a['name'] for a in t['artists']]), 
-                                "Playlist": pl['name'],
-                                "Link": t['external_urls']['spotify']
-                            })
-                except Exception as e:
-                    st.warning(f"Konnte '{pl['name']}' nicht lesen. Überspringe...")
-                    continue
-                
-            st.session_state.all_songs = all_songs
-            st.success("✅ Scan abgeschlossen!")
-            st.rerun()
-        st.stop()
+        st.session_state.all_songs = all_songs
+        st.success("✅ Scan abgeschlossen!")
+        st.rerun()
+    st.stop()
 
     # 4. Schritt: Die Suche
     st.write("### 🔍 Künstler suchen")
