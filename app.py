@@ -2,8 +2,8 @@ import streamlit as st
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 
-st.set_page_config(page_title="Spotify Artist Finder", layout="centered")
-st.title("🎵 Artist Playlist Finder")
+st.set_page_config(page_title="Spotify Finder", layout="centered")
+st.title("🎵 Spotify Finder")
 
 # 1. Zugriff auf die Secrets (müssen in Streamlit Cloud hinterlegt sein)
 try:
@@ -87,8 +87,9 @@ else:
                 else:
                     st.warning("Nichts gefunden.")
                     
-    except Exception as e:
-        st.error(f"Ein Fehler ist aufgetreten: {e}")
-        if st.button("Erneut versuchen"):
-            st.query_params.clear()
-            st.rerun()
+except Exception as e:
+    st.error("🚨 Ein Fehler ist aufgetreten:")
+    st.exception(e) # Das zeigt uns den VOLLSTÄNDIGEN Fehlercode an
+    if st.button("Sitzung zurücksetzen"):
+        st.query_params.clear()
+        st.rerun()
