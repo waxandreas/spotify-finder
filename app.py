@@ -39,79 +39,79 @@ else:
         code = query_params["code"]
         token_info = auth_manager.get_access_token(code)
         sp = spotipy.Spotify(auth=token_info['access_token'])
-        st.success("✅ Verbunden!")
 
-        # Suchmaske
+        # Funktion zum Laden ALLER Daten (wird gecached)
+        @st.cache_data(show_spinner=False, ttl=3600)  # Speichert Daten für 1 Stunde
+        def get_all_user_data(_sp):
+            all_data = []
+            playlists = []
+            
+            # 1. Alle Playlists laden
+            results = _sp.current_user_playlists(limit=50)
+            playlists.extend(results['items'])
+            while results['next']:
+                results = _sp.next(results)
+                playlists.extend(results['items'])
+            
+            # 2. Tracks für jede Playlist laden
+            for pl in playlists:
+                try:
+                    pl_tracks = []
+                    # Wir holen nur die nötigsten Felder, um die Antwort klein zu halten
+                    results = _sp.playlist_items(
+                        pl['id'], 
+                        fields='items(track(name, external_urls, artists(name))), next'
+                    )
+                    
+                    while results:
+                        for item in results['items']:
+                            if item.get('track'):
+                                track = item['track']
+                                pl_tracks.append({
+                                    "Song": track['name'],
+                                    "Artists": [a['name'] for a in track['artists']],
+                                    "Link": track['external_urls']['spotify'],
+                                    "Playlist": pl['name']
+                                })
+                        results = _sp.next(results) if results['next'] else None
+                    
+                    all_data.extend(pl_tracks)
+                except Exception:
+                    continue # Playlists ohne Zugriff überspringen
+            return all_data
+
+        # --- Such-Interface ---
+        st.write("---")
+        if st.button("🚀 Musik-Bibliothek scannen / aktualisieren"):
+            st.cache_data.clear() # Ermöglicht manuelles Refresh
+            st.rerun()
+
+        # Daten laden (beim ersten Mal langsam, danach blitzschnell)
+        with st.spinner("Lade deine Playlists in den Zwischenspeicher (nur beim ersten Mal)..."):
+            cached_songs = get_all_user_data(sp)
+        
+        st.success(f"{len(cached_songs)} Songs aus {len(set(s['Playlist'] for s in cached_songs))} Playlists bereit zum Durchsuchen!")
+
         artist_query = st.text_input("Welchen Künstler suchst du?", placeholder="z.B. Queen").strip()
 
         if artist_query:
-            found_tracks = []
+            # Die eigentliche Suche passiert jetzt nur noch im lokalen Speicher (extrem schnell)
+            query = artist_query.lower()
+            results = [
+                s for s in cached_songs 
+                if any(query in a.lower() for a in s['Artists'])
+            ]
             
-            with st.status("Durchsuche deine Bibliothek...", expanded=True) as status:
-                # 1. Alle Playlists des Nutzers abrufen (Paging für Playlists)
-                all_playlists = []
-                results = sp.current_user_playlists(limit=50)
-                all_playlists.extend(results['items'])
-                while results['next']:
-                    results = sp.next(results)
-                    all_playlists.extend(results['items'])
-                
-                status.write(f"{len(all_playlists)} Playlists gefunden. Starte Tiefensuche...")
-
-                # 2. Jede Playlist einzeln durchsuchen
-                for pl in all_playlists:
-                    try:
-                        pl_name = pl['name']
-                        pl_id = pl['id']
-                        
-                        # Paging für Tracks innerhalb der Playlist
-                        track_results = sp.playlist_items(pl_id, fields='items(track(name, external_urls, artists)), next')
-                        
-                        while track_results:
-                            for item in track_results['items']:
-                                track = item.get('track')
-                                if not track: continue
-                                
-                                # Prüfen, ob der Künstler im Track vorkommt
-                                artists = [a['name'].lower() for a in track['artists']]
-                                if artist_query.lower() in artists:
-                                    found_tracks.append({
-                                        "Song": track['name'],
-                                        "Playlist": pl_name,
-                                        "Link": track['external_urls']['spotify']
-                                    })
-                            
-                            # Nächste Seite der Playlist laden, falls vorhanden
-                            if track_results['next']:
-                                track_results = sp.next(track_results)
-                            else:
-                                track_results = None
-                                
-                    except spotipy.exceptions.SpotifyException as e:
-                        # 403 Fehler (Forbidden) einfach überspringen
-                        if e.http_status == 403:
-                            status.write(f"⚠️ Überspringe '{pl['name']}' (Kein Zugriff)")
-                            continue
-                        else:
-                            status.write(f"❌ Fehler bei '{pl['name']}': {e}")
-                
-                status.update(label="Suche beendet!", state="complete", expanded=False)
-
-            # 3. Ergebnisse anzeigen
-            if found_tracks:
-                st.write(f"### 🎵 Gefundene Songs ({len(found_tracks)})")
-                
-                # Tabelle mit Klick-Links
+            if results:
+                st.write(f"### Gefundene Songs ({len(results)})")
                 st.dataframe(
-                    found_tracks,
-                    column_config={
-                        "Link": st.column_config.LinkColumn("In Spotify öffnen")
-                    },
+                    results,
+                    column_config={"Link": st.column_config.LinkColumn("Anhören")},
                     hide_index=True,
                     use_container_width=True
                 )
             else:
-                st.warning(f"Keine Songs von '{artist_query}' in deinen Playlists gefunden.")
+                st.warning("Keine Treffer.")
                     
     except Exception as e:
         st.error("🚨 Ein Fehler ist aufgetreten:")
