@@ -31,25 +31,25 @@ if "code" not in query_params:
     auth_url = auth_manager.get_authorize_url()
     st.info("Willkommen! Bitte melde dich zuerst bei Spotify an.")
     
-    # HTML/CSS für den originalen Spotify-Look
+    # Der Trick: window.top.location.href öffnet den Link im SELBEN Tab
     spotify_button_html = f"""
-    <a href="{auth_url}" target="_blank" style="text-decoration: none;">
-        <div style="
+    <div style="display: flex; justify-content: center;">
+        <button onclick="window.top.location.href='{auth_url}'" style="
             background-color: #1DB954;
             color: white;
-            padding: 12px 24px;
+            padding: 14px 28px;
             border-radius: 50px;
             text-align: center;
             font-weight: bold;
-            font-family: sans-serif;
-            display: inline-block;
+            font-size: 16px;
             border: none;
             cursor: pointer;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        ">
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            transition: transform 0.2s;
+        " onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
             Mit Spotify verbinden
-        </div>
-    </a>
+        </button>
+    </div>
     """
     st.markdown(spotify_button_html, unsafe_allow_html=True)
 else:
