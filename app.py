@@ -1,41 +1,94 @@
 import streamlit as st
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
-import os
 
-st.set_page_config(page_title="Spotify Artist Finder")
+st.set_page_config(page_title="Spotify Artist Finder", layout="centered")
 st.title("🎵 Artist Playlist Finder")
 
-# Login-Bereich
-# WICHTIG: Die Keys holen wir uns später aus den "Secrets"
-client_id = st.secrets["SPOTIPY_CLIENT_ID"]
-client_secret = st.secrets["SPOTIPY_CLIENT_SECRET"]
-redirect_uri = st.secrets["SPOTIPY_REDIRECT_URI"]
+# 1. Zugriff auf die Secrets (müssen in Streamlit Cloud hinterlegt sein)
+try:
+    client_id = st.secrets["SPOTIPY_CLIENT_ID"]
+    client_secret = st.secrets["SPOTIPY_CLIENT_SECRET"]
+    redirect_uri = st.secrets["SPOTIPY_REDIRECT_URI"]
+except Exception:
+    st.error("Fehler: Secrets nicht gefunden! Hast du sie in den Streamlit-Einstellungen eingetragen?")
+    st.stop()
 
+# 2. Authentifizierungs-Setup
 auth_manager = SpotifyOAuth(
     client_id=client_id,
     client_secret=client_secret,
     redirect_uri=redirect_uri,
     scope="playlist-read-private",
-    open_browser=False # Wichtig für Web-Server!
+    show_dialog=True
 )
 
-# Authentifizierungs-Link anzeigen
-auth_url = auth_manager.get_authorize_url()
-st.sidebar.markdown(f'[In Spotify einloggen]({auth_url})')
+# NEU: Der moderne Weg, um URL-Parameter in Streamlit abzugreifen
+query_params = st.query_params
 
-# URL-Parameter abfangen (nach dem Login)
-query_params = st.experimental_get_query_params()
-if "code" in query_params:
-    token = auth_manager.get_access_token(query_params["code"])
-    sp = spotipy.Spotify(auth=token["access_token"])
-    
-    artist_name = st.text_input("Welchen Künstler suchst du?")
-    
-    if artist_name and st.button("Suchen"):
-        with st.spinner('Durchsuche Playlists...'):
-            # Hier die Logik von oben einfügen (Playlists loopen)
-            # ... (gekürzt zur Übersicht)
-            st.success(f"Suche abgeschlossen für {artist_name}!")
+# Falls kein "code" in der URL ist -> Login zeigen
+if "code" not in query_params:
+    auth_url = auth_manager.get_authorize_url()
+    st.info("Willkommen! Bitte melde dich zuerst bei Spotify an.")
+    st.markdown(f'''
+        <a href="{auth_url}" target="_self">
+            <button style="background-color: #1DB954; color: white; border: none; padding: 10px 20px; border-radius: 20px; cursor: pointer;">
+                Mit Spotify verbinden
+            </button>
+        </a>
+    ''', unsafe_allow_html=True)
 else:
-    st.info("Bitte klicke links auf den Login-Link, um zu starten.")
+    # 3. Token abrufen und Spotify-Client starten
+    try:
+        code = query_params["code"]
+        token_info = auth_manager.get_access_token(code)
+        sp = spotipy.Spotify(auth=token_info['access_token'])
+        
+        st.success("Erfolgreich eingeloggt!")
+        
+        # Suchmaske
+        artist_query = st.text_input("Welchen Künstler suchst du in deinen Playlists?", placeholder="z.B. Queen")
+        
+        if artist_query:
+            with st.spinner(f"Durchsuche deine Playlists nach '{artist_query}'..."):
+                found_tracks = []
+                playlists = sp.current_user_playlists()
+                
+                while playlists:
+                    for pl in playlists['items']:
+                        # Tracks der Playlist laden
+                        results = sp.playlist_tracks(pl['id'])
+                        tracks = results['items']
+                        while results['next']:
+                            results = sp.next(results)
+                            tracks.extend(results['items'])
+                        
+                        # Filtern
+                        for item in tracks:
+                            track = item.get('track')
+                            if track:
+                                for artist in track['artists']:
+                                    if artist_query.lower() in artist['name'].lower():
+                                        found_tracks.append({
+                                            "Song": track['name'],
+                                            "Playlist": pl['name'],
+                                            "Link": track['external_urls']['spotify']
+                                        })
+                    
+                    if playlists['next']:
+                        playlists = sp.next(playlists)
+                    else:
+                        playlists = None
+
+                # Ergebnisse anzeigen
+                if found_tracks:
+                    st.write(f"Gefundene Songs: {len(found_tracks)}")
+                    st.table(found_tracks)
+                else:
+                    st.warning("Nichts gefunden.")
+                    
+    except Exception as e:
+        st.error(f"Ein Fehler ist aufgetreten: {e}")
+        if st.button("Erneut versuchen"):
+            st.query_params.clear()
+            st.rerun()
