@@ -41,44 +41,67 @@ else:
         sp = spotipy.Spotify(auth=token_info['access_token'])
 
         # Funktion zum Laden ALLER Daten (wird gecached)
-        @st.cache_data(show_spinner=False, ttl=3600)  # Speichert Daten für 1 Stunde
+        @st.cache_data(show_spinner=False, ttl=3600)
         def get_all_user_data(_sp):
-            all_data = []
-            playlists = []
+            all_songs = []
+            seen_track_ids = set() # Verhindert, dass wir denselben Song 10x laden
             
-            # 1. Alle Playlists laden
+            # 1. Alle Playlists auf einmal holen (Limit 50)
+            playlists = []
             results = _sp.current_user_playlists(limit=50)
             playlists.extend(results['items'])
             while results['next']:
                 results = _sp.next(results)
                 playlists.extend(results['items'])
             
-            # 2. Tracks für jede Playlist laden
-            for pl in playlists:
+            # Fortschrittsbalken in Streamlit
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            for i, pl in enumerate(playlists):
+                # Update Fortschritt
+                percent = int((i + 1) / len(playlists) * 100)
+                progress_bar.progress(percent)
+                status_text.text(f"Scanne Playlist {i+1}/{len(playlists)}: {pl['name']}")
+                
                 try:
-                    pl_tracks = []
-                    # Wir holen nur die nötigsten Felder, um die Antwort klein zu halten
-                    results = _sp.playlist_items(
-                        pl['id'], 
-                        fields='items(track(name, external_urls, artists(name))), next'
-                    )
-                    
-                    while results:
-                        for item in results['items']:
-                            if item.get('track'):
-                                track = item['track']
-                                pl_tracks.append({
+                    # WICHTIG: Wir holen NUR die Track-ID und den Namen, um Zeit zu sparen
+                    # Wir nutzen playlist_items statt next-Paging innerhalb der Playlist für Speed
+                    offset = 0
+                    while True:
+                        res = _sp.playlist_items(
+                            pl['id'], 
+                            offset=offset, 
+                            limit=100, 
+                            fields='items(track(id, name, external_urls, artists(name))), next'
+                        )
+                        
+                        for item in res['items']:
+                            track = item.get('track')
+                            if not track or not track.get('id'): continue
+                            
+                            # Nur hinzufügen, wenn wir den Song in DIESER Playlist noch nicht haben
+                            # (Oder global nicht haben, falls du Dubletten gar nicht willst)
+                            track_key = f"{track['id']}-{pl['id']}" 
+                            if track_key not in seen_track_ids:
+                                all_songs.append({
                                     "Song": track['name'],
                                     "Artists": [a['name'] for a in track['artists']],
                                     "Link": track['external_urls']['spotify'],
                                     "Playlist": pl['name']
                                 })
-                        results = _sp.next(results) if results['next'] else None
-                    
-                    all_data.extend(pl_tracks)
-                except Exception:
-                    continue # Playlists ohne Zugriff überspringen
-            return all_data
+                                seen_track_ids.add(track_key)
+                        
+                        if not res['next'] or offset > 500: # Sicherheit: Max 500 Songs pro Playlist
+                            break
+                        offset += 100
+                        
+                except Exception as e:
+                    continue # Bei Fehler (z.B. 403) zur nächsten Playlist
+            
+            progress_bar.empty()
+            status_text.empty()
+            return all_songs
 
         # --- Such-Interface ---
         st.write("---")
