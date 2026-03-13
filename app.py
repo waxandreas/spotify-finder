@@ -1,5 +1,39 @@
+import streamlit as st
+import spotipy
+from spotipy.oauth2 import SpotifyOAuth
 import requests
 
+st.set_page_config(page_title="Spotify Finder", layout="centered")
+st.title("🎵 Spotify Finder")
+
+# 1. Zugriff auf die Secrets (müssen in Streamlit Cloud hinterlegt sein)
+try:
+    client_id = st.secrets["SPOTIPY_CLIENT_ID"]
+    client_secret = st.secrets["SPOTIPY_CLIENT_SECRET"]
+    redirect_uri = st.secrets["SPOTIPY_REDIRECT_URI"]
+except Exception:
+    st.error("Fehler: Secrets nicht gefunden! Hast du sie in den Streamlit-Einstellungen eingetragen?")
+    st.stop()
+
+# 2. Authentifizierungs-Setup
+auth_manager = SpotifyOAuth(
+    client_id=client_id,
+    client_secret=client_secret,
+    redirect_uri=redirect_uri,
+    scope="playlist-read-private user-library-read",
+    show_dialog=True
+)
+
+# NEU: Der moderne Weg, um URL-Parameter in Streamlit abzugreifen
+query_params = st.query_params
+
+# Falls kein "code" in der URL ist -> Login zeigen
+if "code" not in query_params:
+    auth_url = auth_manager.get_authorize_url()
+    st.info("Willkommen! Bitte melde dich zuerst bei Spotify an.")
+    
+    # Dieser Button öffnet den Link automatisch korrekt
+    st.link_button("Mit Spotify verbinden", auth_url, type="primary")
 else:
     # 1. Token manuell extrahieren
     if 'access_token' not in st.session_state:
