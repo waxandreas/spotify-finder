@@ -34,50 +34,63 @@ if "code" not in query_params:
     # Dieser Button öffnet den Link automatisch korrekt
     st.link_button("Mit Spotify verbinden", auth_url, type="primary")
 else:
-    # 1. AUTHENTIFIZIERUNG (Nur einmal pro Sitzung)
+    # 1. Authentifizierung prüfen
     if 'sp' not in st.session_state:
         try:
             code = query_params["code"]
             token_info = auth_manager.get_access_token(code)
             st.session_state.sp = spotipy.Spotify(auth=token_info['access_token'])
-            st.success("✅ Authentifizierung erfolgreich!")
         except Exception as e:
-            st.error("Login-Fehler. Bitte Seite neu laden.")
+            st.error("Login fehlgeschlagen. Bitte Seite neu laden.")
             st.stop()
 
     sp = st.session_state.sp
 
-    # 2. PLAYLISTS LADEN (Nur auf Knopfdruck!)
+    # 2. Schritt: Playlists finden
     if 'all_playlists' not in st.session_state:
-        st.info("Klicke auf den Button, um deine Playlist-Übersicht zu laden.")
-        if st.button("📁 Playlist-Verzeichnis abrufen"):
-            with st.status("Kontaktiere Spotify...") as status:
-                try:
-                    results = sp.current_user_playlists(limit=50)
-                    all_p = results['items']
-                    while results['next']:
-                        results = sp.next(results)
-                        all_p.extend(results['items'])
-                    st.session_state.all_playlists = all_p
-                    status.update(label=f"Fertig! {len(all_p)} Playlists gefunden.", state="complete")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Fehler beim Abrufen: {e}")
-        st.stop() # Hier stoppen, bis Playlists geladen sind
+        st.write("### Schritt 1: Verzeichnis laden")
+        if st.button("Katalog erstellen"):
+            all_p = []
+            with st.status("Hole Playlist-Namen von Spotify...") as status:
+                results = sp.current_user_playlists(limit=50)
+                all_p.extend(results['items'])
+                while results['next']:
+                    results = sp.next(results)
+                    all_p.extend(results['items'])
+                    status.write(f"Gefunden: {len(all_p)} Playlists...")
+                st.session_state.all_playlists = all_p
+                status.update(label="Katalog bereit!", state="complete")
+            st.rerun()
+        st.stop()
 
-    # 3. SCAN STARTEN
+    # 3. Schritt: Der Sichtbare Scan
     if 'all_songs' not in st.session_state:
-        st.success(f"Gefunden: {len(st.session_state.all_playlists)} Playlists.")
-        if st.button("🚀 Jetzt alle Songs tiefenscannen (Dauert ca. 1-2 Min)"):
+        st.write(f"### Schritt 2: Tiefenscan ({len(st.session_state.all_playlists)} Playlists)")
+        
+        if st.button("🚀 Suche jetzt starten"):
             all_songs = []
-            prog = st.progress(0)
-            status_msg = st.empty()
+            
+            # Hier ist die genaue Fortschrittsanzeige
+            progress_bar = st.progress(0)
+            playlist_name_display = st.empty() # Platzhalter für den Namen
+            counter_display = st.empty()      # Platzhalter für die Zahl
+            
+            total = len(st.session_state.all_playlists)
             
             for i, pl in enumerate(st.session_state.all_playlists):
-                status_msg.text(f"Scanne ({i+1}/{len(st.session_state.all_playlists)}): {pl['name']}")
+                # Update der Anzeige VOR dem Laden der Playlist
+                current_num = i + 1
+                playlist_name_display.markdown(f"Aktuelle Playlist: **{pl['name']}**")
+                counter_display.info(f"Fortschritt: {current_num} von {total}")
+                progress_bar.progress(current_num / total)
+                
                 try:
-                    # Wir holen nur die ersten 100 Tracks pro Playlist für den Speed-Test
-                    res = sp.playlist_items(pl['id'], limit=100, fields='items(track(name, external_urls, artists(name)))')
+                    # Wir holen die Songs
+                    res = sp.playlist_items(
+                        pl['id'], 
+                        limit=100, 
+                        fields='items(track(name, external_urls, artists(name)))'
+                    )
                     for item in res['items']:
                         t = item.get('track')
                         if t:
@@ -87,26 +100,27 @@ else:
                                 "Playlist": pl['name'],
                                 "Link": t['external_urls']['spotify']
                             })
-                except:
+                except Exception as e:
+                    st.warning(f"Konnte '{pl['name']}' nicht lesen. Überspringe...")
                     continue
-                prog.progress((i + 1) / len(st.session_state.all_playlists))
-            
+                
             st.session_state.all_songs = all_songs
-            status_msg.success(f"Scan abgeschlossen! {len(all_songs)} Songs bereit.")
+            st.success("✅ Scan abgeschlossen!")
             st.rerun()
         st.stop()
 
-    # 4. SUCHE (Wird erst angezeigt, wenn alles geladen ist)
-    st.write("### 🔍 Suche in deiner Bibliothek")
-    artist_query = st.text_input("Künstler-Name eingeben:").strip().lower()
+    # 4. Schritt: Die Suche
+    st.write("### 🔍 Künstler suchen")
+    artist_query = st.text_input("Name eingeben (z.B. Queen):").strip().lower()
 
     if artist_query:
         matches = [s for s in st.session_state.all_songs if artist_query in s['Artists'].lower()]
         if matches:
+            st.write(f"Gefundene Songs: {len(matches)}")
             st.dataframe(matches, use_container_width=True)
         else:
-            st.warning("Keine Treffer gefunden.")
+            st.warning("Kein Treffer in deiner Bibliothek.")
 
-    if st.button("🔄 Alles zurücksetzen"):
+    if st.button("🗑️ Daten löschen / Neu scannen"):
         st.session_state.clear()
         st.rerun()
