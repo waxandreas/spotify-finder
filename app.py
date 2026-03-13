@@ -19,7 +19,7 @@ auth_manager = SpotifyOAuth(
     client_id=client_id,
     client_secret=client_secret,
     redirect_uri=redirect_uri,
-    scope="playlist-read-private",
+    scope="playlist-read-private user-library-read",
     show_dialog=True
 )
 
