@@ -31,28 +31,27 @@ if "code" not in query_params:
     auth_url = auth_manager.get_authorize_url()
     st.info("Willkommen! Bitte melde dich zuerst bei Spotify an.")
     
-    # Ein echter Link (<a>), der wie ein Button aussieht
-    # target="_self" erzwingt das Öffnen im selben Tab
-    spotify_button_html = f"""
-    <div style="display: flex; justify-content: center;">
-        <a href="{auth_url}" target="_self" style="
+    # Wir erstellen den Button. Wenn er geklickt wird, führt er das JS aus.
+    if st.button("Mit Spotify verbinden", type="primary"):
+        # Dieser Befehl reißt die Seite aus dem Iframe heraus
+        js = f"window.top.location.href = '{auth_url}'"
+        st.components.v1.html(f"<script>{js}</script>", height=0)
+        st.stop()
+
+    # Styling für den Button (Streamlit Buttons sind standardmäßig rot/blau, 
+    # wir machen ihn hier über CSS grün)
+    st.markdown("""
+        <style>
+        div.stButton > button:first-child {
             background-color: #1DB954;
             color: white;
-            padding: 14px 28px;
             border-radius: 50px;
-            text-align: center;
-            font-weight: bold;
-            font-size: 16px;
-            text-decoration: none;
-            display: inline-block;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-            font-family: sans-serif;
-        ">
-            Mit Spotify verbinden
-        </a>
-    </div>
-    """
-    st.markdown(spotify_button_html, unsafe_allow_html=True)
+            border: none;
+            padding: 10px 20px;
+            width: 100%;
+        }
+        </style>
+    """, unsafe_allow_html=True)
 else:
     # 3. Token abrufen und Spotify-Client starten
     try:
