@@ -30,13 +30,9 @@ query_params = st.query_params
 if "code" not in query_params:
     auth_url = auth_manager.get_authorize_url()
     st.info("Willkommen! Bitte melde dich zuerst bei Spotify an.")
-    st.markdown(f'''
-        <a href="{auth_url}" target="_self">
-            <button style="background-color: #1DB954; color: white; border: none; padding: 10px 20px; border-radius: 20px; cursor: pointer;">
-                Mit Spotify verbinden
-            </button>
-        </a>
-    ''', unsafe_allow_html=True)
+    
+    # Dieser Button öffnet den Link automatisch korrekt
+    st.link_button("Mit Spotify verbinden", auth_url, type="primary")
 else:
     # 3. Token abrufen und Spotify-Client starten
     try:
