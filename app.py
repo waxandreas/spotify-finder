@@ -87,9 +87,9 @@ else:
                 else:
                     st.warning("Nichts gefunden.")
                     
-except Exception as e:
-    st.error("🚨 Ein Fehler ist aufgetreten:")
-    st.exception(e) # Das zeigt uns den VOLLSTÄNDIGEN Fehlercode an
-    if st.button("Sitzung zurücksetzen"):
-        st.query_params.clear()
-        st.rerun()
+    except Exception as e:
+        st.error("🚨 Ein Fehler ist aufgetreten:")
+        st.exception(e) # Das zeigt uns den VOLLSTÄNDIGEN Fehlercode an
+        if st.button("Sitzung zurücksetzen"):
+            st.query_params.clear()
+            st.rerun()
