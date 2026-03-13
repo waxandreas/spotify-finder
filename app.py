@@ -29,38 +29,13 @@ query_params = st.query_params
 # Falls kein "code" in der URL ist -> Login zeigen
 if "code" not in query_params:
     auth_url = auth_manager.get_authorize_url()
+    st.info("Verbindung zu Spotify erforderlich")
     
-    st.markdown("""
-        <style>
-        .spotify-btn {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background-color: #1DB954;
-            color: white !important;
-            padding: 15px 30px;
-            border-radius: 50px;
-            text-decoration: none;
-            font-weight: bold;
-            font-size: 18px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-            transition: 0.3s;
-            border: none;
-            width: fit-content;
-            margin: 20px auto;
-        }
-        .spotify-btn:hover {
-            background-color: #1ed760;
-            transform: scale(1.02);
-            box-shadow: 0 6px 15px rgba(0,0,0,0.3);
-        }
-        </style>
-    """, unsafe_allow_html=True)
-
-    st.info("Willkommen! Bitte verbinde dich mit deinem Spotify-Konto.")
+    # Ein ganz normaler Link. Target "_top" sprengt den Rahmen.
+    st.markdown(f'<a href="{auth_url}" target="_top" style="color: #1DB954; font-weight: bold; font-size: 20px;">👉 Hier klicken, um dich mit Spotify zu verbinden</a>', unsafe_allow_html=True)
     
-    # Wir nutzen target="_top", um den Iframe-Rahmen zu sprengen
-    st.markdown(f'<a href="{auth_url}" target="_top" class="spotify-btn">Mit Spotify verbinden</a>', unsafe_allow_html=True)
+    st.write("---")
+    st.caption("Hinweis: Falls die Verbindung verweigert wird, liegt es meist an der Redirect-URL im Spotify Dashboard.")
 else:
     # 3. Token abrufen und Spotify-Client starten
     try:
