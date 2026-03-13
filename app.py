@@ -29,13 +29,10 @@ query_params = st.query_params
 # Falls kein "code" in der URL ist -> Login zeigen
 if "code" not in query_params:
     auth_url = auth_manager.get_authorize_url()
-    st.info("Verbindung zu Spotify erforderlich")
+    st.info("Willkommen! Bitte melde dich zuerst bei Spotify an.")
     
-    # Ein ganz normaler Link. Target "_top" sprengt den Rahmen.
-    st.markdown(f'<a href="{auth_url}" target="_top" style="color: #1DB954; font-weight: bold; font-size: 20px;">👉 Hier klicken, um dich mit Spotify zu verbinden</a>', unsafe_allow_html=True)
-    
-    st.write("---")
-    st.caption("Hinweis: Falls die Verbindung verweigert wird, liegt es meist an der Redirect-URL im Spotify Dashboard.")
+    # Dieser Button öffnet den Link automatisch korrekt
+    st.link_button("Mit Spotify verbinden", auth_url, type="primary")
 else:
     # 3. Token abrufen und Spotify-Client starten
     try:
