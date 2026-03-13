@@ -37,67 +37,79 @@ else:
     try:
         code = query_params["code"]
         token_info = auth_manager.get_access_token(code)
-        sp = spotipy.Spotify(auth=token_info['access_token'])
+        sp = spotipy.Spotify(auth=token_info['access_token'], requests_timeout=10)
 
-        # Funktion für Tracks bleibt gecached (spart Zeit bei Wiederholung)
-        @st.cache_data(ttl=3600)
-        def get_tracks_cached(_sp, pl_id, pl_name):
-            tracks = []
-            res = _sp.playlist_items(pl_id, limit=100, fields='items(track(id, name, external_urls, artists(name))), next')
-            for item in res['items']:
-                t = item.get('track')
-                if t:
-                    tracks.append({"Song": t['name'], "Artists": [a['name'] for a in t['artists']], "Link": t['external_urls']['spotify'], "Playlist": pl_name})
-            return tracks
-
-        st.write("---")
+        # 1. Playlists SCHNELL laden (ohne Paging-Schleife als Test)
+        st.write("### 🔍 Scan-Zentrale")
         
-        # 1. Playlists laden OHNE Cache, damit wir sehen was passiert
-        with st.status("Verbinde mit Spotify und lade Playlist-Verzeichnis...", expanded=True) as status:
-            all_playlists = []
-            results = sp.current_user_playlists(limit=50)
-            all_playlists.extend(results['items'])
-            while results['next']:
-                status.write(f"Bereits {len(all_playlists)} Playlists gefunden...")
-                results = sp.next(results)
-                all_playlists.extend(results['items'])
-            status.update(label=f"✅ {len(all_playlists)} Playlists geladen!", state="complete")
+        if "all_playlists" not in st.session_state:
+            with st.status("Suche Playlists...", expanded=True) as status:
+                try:
+                    # Wir holen erst mal nur die ersten 50, um zu sehen, ob es geht
+                    results = sp.current_user_playlists(limit=50)
+                    all_p = results['items']
+                    
+                    # Falls mehr da sind, holen wir den Rest schnell nach
+                    while results['next'] and len(all_p) < 200: # Sicherheitslimit 200
+                        results = sp.next(results)
+                        all_p.extend(results['items'])
+                        status.write(f"{len(all_p)} Playlists gefunden...")
+                    
+                    st.session_state.all_playlists = all_p
+                    status.update(label="✅ Playlists geladen!", state="complete")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Spotify antwortet nicht schnell genug: {e}")
+                    st.stop()
 
-        # 2. Der eigentliche Scan
-        if "all_songs" not in st.session_state:
-            if st.button(f"🔍 Scan starten ({len(all_playlists)} Playlists durchsuchen)"):
+        # 2. Wenn Playlists da sind, zeige den Scan-Button
+        if "all_playlists" in st.session_state and "all_songs" not in st.session_state:
+            p_list = st.session_state.all_playlists
+            st.success(f"Bereit! {len(p_list)} Playlists im Verzeichnis.")
+            
+            if st.button(f"🚀 Jetzt alle {len(p_list)} Playlists nach Songs scannen"):
                 all_songs = []
-                progress_bar = st.progress(0)
-                status_text = st.empty()
+                prog = st.progress(0)
+                info = st.empty()
                 
-                for i, pl in enumerate(all_playlists):
-                    status_text.text(f"Lese Playlist {i+1}/{len(all_playlists)}: {pl['name']}")
+                # Wir scannen jetzt nur die ersten 100 Songs pro Playlist für Speed
+                for i, pl in enumerate(p_list):
+                    info.text(f"Scanne: {pl['name']}")
                     try:
-                        songs = get_tracks_cached(sp, pl['id'], pl['name'])
-                        all_songs.extend(songs)
+                        # Direkter Abruf ohne Paging innerhalb der Playlist für den ersten Test
+                        res = sp.playlist_items(pl['id'], limit=100, fields='items(track(name, external_urls, artists(name)))')
+                        for item in res['items']:
+                            t = item.get('track')
+                            if t:
+                                all_songs.append({
+                                    "Song": t['name'], 
+                                    "Artists": ", ".join([a['name'] for a in t['artists']]), 
+                                    "Playlist": pl['name'],
+                                    "Link": t['external_urls']['spotify']
+                                })
                     except:
                         continue
-                    progress_bar.progress((i + 1) / len(all_playlists))
+                    prog.progress((i + 1) / len(p_list))
                 
                 st.session_state.all_songs = all_songs
-                status_text.success(f"Fertig! {len(all_songs)} Songs im Speicher.")
                 st.rerun()
 
-        # 3. Suchmaske (nur wenn Daten da sind)
+        # 3. Suchmaske
         if "all_songs" in st.session_state:
-            artist_query = st.text_input("Künstler suchen:", placeholder="z.B. Queen")
-            if artist_query:
-                q = artist_query.lower()
-                results = [s for s in st.session_state.all_songs if any(q in a.lower() for a in s['Artists'])]
-                st.dataframe(results, use_container_width=True)
-                
-            if st.button("🗑️ Cache löschen & neu scannen"):
-                del st.session_state.all_songs
+            st.success(f"Scan fertig! {len(st.session_state.all_songs)} Songs gefunden.")
+            query = st.text_input("Künstler suchen:").lower()
+            if query:
+                res = [s for s in st.session_state.all_songs if query in s['Artists'].lower()]
+                st.dataframe(res, use_container_width=True)
+            
+            if st.button("🗑️ App zurücksetzen"):
+                for key in list(st.session_state.keys()):
+                    del st.session_state[key]
                 st.cache_data.clear()
                 st.rerun()
 
     except Exception as e:
-        st.error("Fehler beim Laden")
+        st.error("Ein Fehler ist aufgetreten")
         st.exception(e)
         if st.button("Sitzung zurücksetzen"):
             st.query_params.clear()
